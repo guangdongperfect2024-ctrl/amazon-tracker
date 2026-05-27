@@ -511,10 +511,9 @@ var boutiqueChart = null;
 var _lastEdit  = null;
 var SAVE_KEY   = 'amz_v6_auto';
 var SNAP_KEY   = 'amz_v6_snaps';
-// ── Supabase 云同步配置 ──────────────────────────
-var SB_URL     = 'https://gdmcexwdruvhtjrqfknd.supabase.co';
-var SB_KEY     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkbWNleHdkcnV2aHRqcnFma25kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NjUzMzUsImV4cCI6MjA5NTQ0MTMzNX0.bc2eRSwDLwtS8DXTApZFPtIiFHRMUBgFQK33gO-TY5g';
-var SB_ROW_ID  = 1; // 固定用第一行存储
+// ── JSONBin 云同步配置 ──────────────────────────
+var JBIN_APIKEY = '$2a$10$2ozXoCjldhmBsjtHria.3.Qe9IGP3lPWQnxGsvO4fOBdlfDogsBZq';
+var JBIN_BINID  = '6a16c373f47d5c455c3c732e';
 var _cloudSaving = false;
 var _cloudDebounce = null;
 
@@ -707,68 +706,33 @@ function cloudPush(onDone){
   _cloudSaving = true;
   var lb=el('snap-auto');
   if(lb) lb.textContent='☁️ 同步中…';
-  var payload = getState();
-  // 先尝试 UPSERT（用 id=1 固定行）
-  fetch(SB_URL+'/rest/v1/tracker_data?id=eq.'+SB_ROW_ID, {
-    method:'PATCH',
-    headers:{
-      'Content-Type':'application/json',
-      'apikey': SB_KEY,
-      'Authorization': 'Bearer '+SB_KEY,
-      'Prefer':'return=minimal'
-    },
-    body: JSON.stringify({payload: payload})
+  fetch('https://api.jsonbin.io/v3/b/'+JBIN_BINID, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json','X-Master-Key':JBIN_APIKEY,'X-Bin-Versioning':'false'},
+    body: getState()
   }).then(function(r){
-    if(r.status===404||r.status===200||r.status===204){
-      // 若 PATCH 成功（204）则完成；若行不存在则 INSERT
-      if(r.status===204||r.status===200){
-        _cloudSaving=false;
-        var ts=new Date();
-        if(lb) lb.textContent='☁️ 已同步 '+('0'+ts.getHours()).slice(-2)+':'+('0'+ts.getMinutes()).slice(-2)+':'+('0'+ts.getSeconds()).slice(-2);
-        if(onDone) onDone(true);
-      } else {
-        // row不存在，INSERT
-        return fetch(SB_URL+'/rest/v1/tracker_data', {
-          method:'POST',
-          headers:{
-            'Content-Type':'application/json',
-            'apikey': SB_KEY,
-            'Authorization': 'Bearer '+SB_KEY,
-            'Prefer':'return=minimal'
-          },
-          body: JSON.stringify({id: SB_ROW_ID, payload: payload})
-        });
-      }
-    } else {
-      return Promise.reject(r.status);
-    }
-  }).then(function(r2){
-    if(!r2) return; // already handled
     _cloudSaving=false;
     var ts=new Date();
-    if(r2.ok||r2.status===201||r2.status===204){
+    if(r.ok){
       if(lb) lb.textContent='☁️ 已同步 '+('0'+ts.getHours()).slice(-2)+':'+('0'+ts.getMinutes()).slice(-2)+':'+('0'+ts.getSeconds()).slice(-2);
       if(onDone) onDone(true);
     } else {
-      if(lb) lb.textContent='⚠️ 同步失败 '+r2.status;
+      if(lb) lb.textContent='⚠️ 同步失败 '+r.status;
       if(onDone) onDone(false);
     }
-  }).catch(function(e){
+  }).catch(function(){
     _cloudSaving=false;
     if(lb) lb.textContent='⚠️ 网络错误';
     if(onDone) onDone(false);
   });
 }
 function cloudPull(onDone){
-  fetch(SB_URL+'/rest/v1/tracker_data?id=eq.'+SB_ROW_ID+'&select=payload', {
-    headers:{
-      'apikey': SB_KEY,
-      'Authorization': 'Bearer '+SB_KEY
-    }
+  fetch('https://api.jsonbin.io/v3/b/'+JBIN_BINID+'/latest', {
+    headers:{'X-Master-Key':JBIN_APIKEY}
   }).then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
-  .then(function(rows){
-    if(!rows||!rows.length||!rows[0].payload){ if(onDone) onDone(false,'empty'); return; }
-    var json = rows[0].payload;
+  .then(function(d){
+    var json = typeof d.record === 'string' ? d.record : JSON.stringify(d.record);
+    if(!json||json==='{"data":"init"}'){ if(onDone) onDone(false,'empty'); return; }
     setState(json);
     try{ localStorage.setItem(SAVE_KEY, json); }catch(e){}
     if(onDone) onDone(true);
@@ -782,10 +746,10 @@ function openCloudConfig(){
   ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center';
   ov.innerHTML='<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:28px 30px;max-width:380px;width:92%;font-family:var(--sans);text-align:center">'
     +'<div style="font-size:24px;margin-bottom:10px">☁️</div>'
-    +'<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">Supabase 云同步</div>'
+    +'<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">JSONBin 云同步</div>'
     +'<div style="font-size:12px;color:var(--text3);margin-bottom:18px;line-height:1.8">'
-    +'已连接至 Supabase 项目<br>'
-    +'<span style="font-family:var(--mono);color:#4da6ff;font-size:11px">mxptrskyikanjhzdcoyk.supabase.co</span><br><br>'
+    +'已连接至 JSONBin<br>'
+    +'<span style="font-family:var(--mono);color:#4da6ff;font-size:11px">Bin ID: '+JBIN_BINID+'</span><br><br>'
     +'数据自动实时同步，无需手动配置。'
     +'</div>'
     +'<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:8px 24px;border-radius:7px;border:none;background:var(--blue2);color:#fff;font-size:13px;cursor:pointer;font-family:var(--sans)">关闭</button>'
